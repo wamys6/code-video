@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>代码视频</title>
+<style>
+  body { margin: 24px auto; width: min(95%, 1120px); background: #ece7dc; color: #17253b; font: 15px "Microsoft YaHei", system-ui, sans-serif; }
+  canvas { display: block; width: auto; max-width: 100%; height: auto; max-height: 77vh; margin-inline: auto; background: #111; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+  button, input { font: inherit; accent-color: #3958cb; }
+  button { padding: 6px 12px; cursor: pointer; }
+  input { flex: 1; min-width: 110px; }
+  output { min-width: 5em; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+<canvas id="film" role="img" aria-label="视频预览"></canvas>
+<div class="controls">
+  <button id="play">播放</button>
+  <label for="time">时间</label>
+  <input id="time" type="range" min="0" step="1" value="0">
+  <output id="clock" for="time">0.00 s</output>
+  <button id="save">导出 WebM</button>
+</div>
+<p id="status" role="status"></p>
+<script>
+(() => {
+  'use strict';
+
+/* @code-video:scene */
+/* @code-video:audio */
+
+const canvas = document.querySelector('#film');
+const slider = document.querySelector('#time');
+const clock = document.querySelector('#clock');
+const play = document.querySelector('#play');
+const save = document.querySelector('#save');
+const status = document.querySelector('#status');
+const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+const frameLast = film.frameCount - 1;
+
+if (![film.width, film.height, film.fps, film.frameCount]
+    .every(value => Number.isSafeInteger(value) && value > 0) ||
+    film.fps > 120 || typeof drawFrame !== 'function') {
+  status.textContent = '请检查片宽、片高、帧率、总帧数及 drawFrame 函数。';
+  play.disabled = save.disabled = slider.disabled = true;
+  return;
+}
+canvas.width = film.width;
+canvas.height = film.height;
+canvas.setAttribute('aria-label', film.title || '视频预览');
+document.title = film.title || '代码视频';
+slider.max = frameLast;
+
+let animation = 0;
+let loading = true;
+let exporting = false;
+let audioBuffer;
+let audioContext;
+let playingSound;
+let playbackRequest = 0;
+const seconds = film.frameCount / film.fps;
+function updateControls() {
+  play.disabled = save.disabled = slider.disabled = loading || exporting;
+}
+
+function paint(frame) {
+  ctx.save();
+  try {
+    ctx.beginPath();
+    drawFrame(ctx, frame);
+  } finally {
+    ctx.restore();
+  }
+}
+
+function show(frame) {
+  paint(frame);
+  slider.value = frame;
+  clock.textContent = (frame / film.fps).toFixed(2) + ' s';
+}
+
+function reportError(error) {
+  status.textContent = error instanceof Error ? error.message : String(error);
+}
+
+updateControls();
+const ready = Promise.resolve().then(() => film.prepare?.())
+  .then(() => prepareSound(film.audioClips, seconds))
+  .then(buffer => { audioBuffer = buffer; })
+  .then(() => document.fonts.ready)
+  .then(() => {
+    show(0);
+    status.textContent = seconds.toFixed(2) + ' 秒 · ' +
+      film.width + ' × ' + film.height + ' · ' + film.fps + ' fps · ' + (audioBuffer ? '含音轨' : '无声');
+    loading = false;
+    updateControls();
+  });
+ready.catch(reportError);
+
+function stopPlayback() {
+  playbackRequest++;
+  cancelAnimationFrame(animation);
+  if (playingSound) {
+    playingSound.stop();
+    playingSound.disconnect();
+    playingSound = undefined;
+  }
+}
+
+slider.addEventListener('input', () => {
+  stopPlayback();
+  show(Number(slider.value));
+});
+
+async function preview() {
+  stopPlayback();
+  const request = playbackRequest;
+  let elapsed;
+  if (audioBuffer) {
+    audioContext ??= new AudioContext();
+    await audioContext.resume();
+    if (request !== playbackRequest) return;
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    const start = audioContext.currentTime;
+    source.onended = () => {
+      if (playingSound === source) {
+        source.disconnect();
+        playingSound = undefined;
+      }
+    };
+    source.start(start);
+    playingSound = source;
+    elapsed = () => audioContext.currentTime - start;
+  } else {
+    const start = performance.now();
+    elapsed = () => (performance.now() - start) / 1000;
+  }
+  show(0);
+  function tick() {
+    const frame = Math.min(frameLast, Math.floor(elapsed() * film.fps));
+    show(frame);
+    if (frame < frameLast) animation = requestAnimationFrame(tick);
+  }
+  animation = requestAnimationFrame(tick);
+}
+play.addEventListener('click', () => preview().catch(reportError));
+
+// WebM uses one VP8 video track and, when supplied, one mixed Opus audio track.
+function unsigned(value, length = Math.max(1, Math.ceil(Math.log2(value + 1) / 8))) {
+  const bytes = new Uint8Array(length);
+  for (let i = length - 1; i >= 0; i--) {
+    bytes[i] = value % 256;
+    value = Math.floor(value / 256);
+  }
+  return bytes;
+}
+
+function element(id, ...payload) {
+  const size = payload.reduce((total, bytes) => total + bytes.byteLength, 0);
+  let length = 1;
+  while (size >= 2 ** (7 * length) - 1) length++;
+  const head = unsigned(id);
+  const sizeBytes = unsigned(2 ** (7 * length) + size, length);
+  const bytes = new Uint8Array(head.length + length + size);
+  bytes.set(head);
+  bytes.set(sizeBytes, head.length);
+  let offset = head.length + length;
+  for (const part of payload) {
+    bytes.set(part, offset);
+    offset += part.byteLength;
+  }
+  return bytes;
+}
+
+const integer = (id, number) => element(id, unsigned(number));
+const string = (id, value) => element(id, new TextEncoder().encode(value));
+function float64(id, value) {
+  const data = new DataView(new ArrayBuffer(8));
+  data.setFloat64(0, value);
+  return element(id, new Uint8Array(data.buffer));
+}
+
+function webm(frames, audio) {
+  const header = element(0x1a45dfa3, integer(0x4286, 1), integer(0x42f7, 1),
+    integer(0x42f2, 4), integer(0x42f3, 8), string(0x4282, 'webm'),
+    integer(0x4287, 4), integer(0x4285, 2));
+  const info = element(0x1549a966, integer(0x2ad7b1, 1_000_000),
+    float64(0x4489, seconds * 1000),
+    string(0x4d80, 'Code Video'), string(0x5741, 'Code Video'));
+  const videoTrack = element(0xae, integer(0xd7, 1), integer(0x73c5, 1), integer(0x83, 1),
+    integer(0x23e383, Math.round(1e9 / film.fps)), string(0x86, 'V_VP8'),
+    element(0xe0, integer(0xb0, film.width), integer(0xba, film.height)));
+  const track = audio ? element(0x1654ae6b, videoTrack, audioTrack(audio)) : element(0x1654ae6b, videoTrack);
+  const clusters = [];
+  const cues = [];
+  let offset = info.length + track.length;
+  let audioIndex = 0;
+  const keyInterval = 2 * film.fps;
+  for (let start = 0; start < frames.length; start += keyInterval) {
+    const group = frames.slice(start, start + keyInterval);
+    const time = group[0].ms;
+    const blocks = group.map(frame => {
+      const relative = frame.ms - time;
+      const flags = frame.key ? 0x80 : 0;
+      return { ms: frame.ms, data: element(0xa3, Uint8Array.of(0x81, relative >> 8, relative & 255, flags), frame.bytes) };
+    });
+    if (audio) {
+      const until = frames[start + keyInterval]?.ms ?? Infinity;
+      while (audioIndex < audio.packets.length && audio.packets[audioIndex].ms < until) {
+        const packet = audio.packets[audioIndex++];
+        const pad = audioIndex === audio.packets.length ? audio.trim : 0;
+        blocks.push({ ms: packet.ms, data: audioBlock(packet, time, pad) });
+      }
+      blocks.sort((a, b) => a.ms - b.ms);
+    }
+    const cluster = element(0x1f43b675, integer(0xe7, time), ...blocks.map(block => block.data));
+    cues.push(element(0xbb, integer(0xb3, time),
+      element(0xb7, integer(0xf7, 1), integer(0xf1, offset))));
+    clusters.push(cluster);
+    offset += cluster.length;
+  }
+  const segment = element(0x18538067, info, track, ...clusters, element(0x1c53bb6b, ...cues));
+  return new Blob([header, segment], { type: 'video/webm' });
+}
+
+
+async function encodeVideo() {
+  if (!window.VideoEncoder || !window.VideoFrame) {
+    throw new Error('此浏览器不支持 WebCodecs。可用支持 VP8 编码的 Edge 或 Chrome 打开。');
+  }
+  const config = {
+    codec: 'vp8', width: film.width, height: film.height, framerate: film.fps,
+    bitrate: film.bitrate ?? 4_000_000, latencyMode: 'realtime',
+  };
+  if (!(await VideoEncoder.isConfigSupported(config)).supported) {
+    throw new Error('当前浏览器不支持这一组 VP8 编码参数。');
+  }
+
+  const frames = [];
+  let encodingError;
+  const encoder = new VideoEncoder({
+    output(chunk) {
+      const bytes = new Uint8Array(chunk.byteLength);
+      chunk.copyTo(bytes);
+      frames.push({ ms: Math.round(chunk.timestamp / 1000), key: chunk.type === 'key', bytes });
+    },
+    error(error) { encodingError = error; },
+  });
+  const keyInterval = 2 * film.fps;
+  try {
+    encoder.configure(config);
+    for (let start = 0; start < film.frameCount; start += keyInterval) {
+      status.textContent = '逐帧编码中 ' + start + ' / ' + film.frameCount;
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const end = Math.min(start + keyInterval, film.frameCount);
+      for (let i = start; i < end; i++) {
+        paint(i);
+        const timestamp = Math.round(i * 1e6 / film.fps);
+        const duration = Math.round((i + 1) * 1e6 / film.fps) - timestamp;
+        const frame = new VideoFrame(canvas, { timestamp, duration });
+        try {
+          encoder.encode(frame, { keyFrame: i === start });
+        } finally {
+          frame.close();
+        }
+      }
+      await encoder.flush();
+      if (encodingError) throw encodingError;
+    }
+    frames.sort((a, b) => a.ms - b.ms);
+    if (frames.length !== film.frameCount || frames.some((frame, i) =>
+        frame.ms !== Math.round(Math.round(i * 1e6 / film.fps) / 1000) ||
+        (i % keyInterval === 0 && !frame.key))) {
+      throw new Error('帧数、时间戳或关键帧不完整。请降低画幅或帧率后重试。');
+    }
+    return frames;
+  } finally {
+    if (encoder.state !== 'closed') encoder.close();
+  }
+}
+
+async function exportVideo() {
+  await ready;
+  if (exporting) throw new Error('当前有视频正在导出。');
+  stopPlayback();
+  exporting = true;
+  updateControls();
+  try {
+    if (audioBuffer) status.textContent = '正在编码音轨。';
+    const audio = await encodeSound(audioBuffer);
+    const blob = webm(await encodeVideo(), audio);
+    const filename = film.filename || 'code-video.webm';
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    show(frameLast);
+    status.textContent = '已生成 ' + filename + '，共 ' + film.frameCount + ' 帧。';
+    return {
+      filename, width: film.width, height: film.height, fps: film.fps,
+      frames: film.frameCount, seconds, bytes: blob.size, audio: !!audio,
+    };
+  } finally {
+    exporting = false;
+    updateControls();
+  }
+}
+
+globalThis.codeVideo = { export: exportVideo };
+save.addEventListener('click', () => exportVideo().catch(reportError));
+})();
+</script>
+</html>

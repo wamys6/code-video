@@ -1,4 +1,4 @@
 interface:
-  display_name: "纯代码视频"
-  short_description: "把主题或素材做成离线可预览、可逐帧导出的纯代码短片"
-  default_prompt: "用 $code-video 把这个主题做成一段可离线预览的科普短片，交付可编辑源码和 WebM。"
+  display_name: "代码视频 · 2D 与 3D"
+  short_description: "按提示词制作二维、三维或混合短片，支持可编辑源码与逐帧导出"
+  default_prompt: "用 $code-video 根据我的描述选择合适的画面风格，制作短片并交付成片和源码。"

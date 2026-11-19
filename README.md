@@ -4,7 +4,13 @@
 
 ## 中文
 
-**code-video** 是一个用原生 Canvas 和 JavaScript 制作动态图解、数据动画和 2D 人物短片的技能包。Codex、腾讯 WorkBuddy 和 DeepSeek Harness 共用同一份 `SKILL.md`、脚本和示例。生成的单文件 HTML 可以离线打开，也可以逐帧导出带音轨的 WebM。
+一个 Skill 制作二维、三维和混合短片。你可以指定维度、画风和交付格式，也可以只描述观众要看到什么，让助手按镜头选择。原 `threejs-cinematic-video` 的工程与检查器已内置。升级时保留一个 `code-video` 安装，把旧版独立 Skill 移出技能目录。
+
+| 提示词示例 | 对应做法 |
+| --- | --- |
+| “用 2D 平面动画解释两列波如何叠加，导出 MP4。” | 用 Canvas 逐帧绘制，按指定格式交付 |
+| “用卡通风格的 3D 镜头绕花苞移动，拍到花瓣展开。” | 用 Three.js 保留空间关系与卡通画风 |
+| “镜头绕信标移动，标注一直指着顶部发射器。” | 三维绕拍与二维跟踪引线一起进入成片 |
 
 ### 安装
 
@@ -52,7 +58,25 @@ node scripts/build.mjs assets/character-dialogue.scene.js preview/umbrella.html 
 node scripts/export.mjs preview/umbrella.html preview/umbrella.webm
 ```
 
-### 制作自己的短片
+### 运行三维和混合示例
+
+把 [assets/starter](assets/starter/) 复制到工作目录，进入该目录，准备 Node.js 22.12+、Chromium、FFmpeg 和 FFprobe。
+
+```sh
+npm ci
+npx playwright install chromium
+npm run dev
+```
+
+打开终端显示的网址查看纯三维。在网址后加 `?hybrid=1` 查看跟踪标注。在同一目录的另一终端分别导出纯三维短样、混合关键帧和完整六秒混合 MP4，输出位于 `renders/`。导出视频时可加 `--audio ./mix.wav`。[合成与验收](references/hybrid.md) · [渲染与排障](references/rendering.md)
+
+```sh
+npm run render -- --preview
+npm run render -- --hybrid --samples
+npm run render -- --hybrid
+```
+
+### 制作自己的二维短片
 
 在 `*.scene.js` 中定义影片规格 `film`，并实现 `drawFrame(ctx, frame)`。预览和导出使用同一个绘制函数。人物走姿、转身画片、道具握点和口型时间由作者设计。内置导出为 VP8 视频，可带一条混合后的 Opus 音轨。
 
@@ -63,7 +87,13 @@ node scripts/export.mjs preview/umbrella.html preview/umbrella.webm
 
 ## English
 
-**code-video** is a skill for making animated explainers, data visualizations, and 2D character shorts with native Canvas and JavaScript. Codex, Tencent WorkBuddy, and DeepSeek Harness use the same `SKILL.md`, scripts, and examples. It builds a self-contained HTML preview that works offline and renders WebM frame by frame, with optional audio.
+One skill for 2D, 3D and mixed-media code-driven shorts. Specify the dimension, art direction or output format, or describe the shot and let the agent choose. The Three.js starter and frame inspector are included. When upgrading, keep one `code-video` installation and move the old standalone skill out of the client's skills directory.
+
+| Example prompt | Approach |
+| --- | --- |
+| “Explain wave interference in flat 2D animation and deliver an MP4.” | Render with Canvas and encode the requested format |
+| “Orbit a flower bud in stylized 3D as its petals unfold.” | Use Three.js with the requested art direction |
+| “Orbit the beacon while a label tracks the emitter cap.” | Project a 3D anchor into a 2D callout and encode both layers |
 
 ### Installation
 
@@ -111,7 +141,25 @@ node scripts/build.mjs assets/character-dialogue.scene.js preview/umbrella.html 
 node scripts/export.mjs preview/umbrella.html preview/umbrella.webm
 ```
 
-### Make your own short
+### Run the 3D and hybrid examples
+
+Copy [assets/starter](assets/starter/) to a working directory and enter it. The demo uses Node.js 22.12+, Chromium, FFmpeg and FFprobe.
+
+```sh
+npm ci
+npx playwright install chromium
+npm run dev
+```
+
+Open the printed URL for 3D, or append `?hybrid=1` for the tracked callout. In another terminal in the same directory, export a 3D preview, hybrid keyframes and a full six-second hybrid MP4. Outputs go under `renders/`. Append `--audio ./mix.wav` to include a mix. [Hybrid rendering](references/hybrid.md) · [Export and troubleshooting](references/rendering.md)
+
+```sh
+npm run render -- --preview
+npm run render -- --hybrid --samples
+npm run render -- --hybrid
+```
+
+### Make your own 2D short
 
 Define the `film` configuration and `drawFrame(ctx, frame)` in a `*.scene.js` file. Preview and export use the same drawing function. Author the character poses, turn views, prop contact points, and mouth timing for each shot. The built-in exporter produces VP8 video with an optional mixed Opus audio track.
 

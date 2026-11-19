@@ -62,3 +62,15 @@ node scripts/export.mjs ./preview/wave.html ./preview/wave.webm
 - 有对白或配乐时，以声音落点定镜头时序。验收时同时核对视频帧、音轨时长和对白出现的位置。内置音轨为 Opus，MP4 需要兼容编码和对应容器。
 
 [WebCodecs VideoEncoder](https://developer.mozilla.org/en-US/docs/Web/API/VideoEncoder) · [WebM 容器规范](https://www.webmproject.org/docs/container/)
+
+## 二维短片交付 MP4
+
+在最终尺寸为偶数时，以下命令将模板导出的 WebM 转为兼容常见播放器的 H.264 MP4。有音轨时一并转为 AAC。按成片分辨率绘制，保留原帧率和可编辑的场景代码。
+
+```sh
+ffmpeg -n -i preview/wave.webm -map 0:v:0 -map "0:a?" -c:v libx264 -crf 17 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart preview/wave.mp4
+ffprobe -v error -count_frames -show_streams preview/wave.mp4
+node assets/starter/inspect-video.mjs preview/wave.mp4
+```
+
+比较转码前后的帧数、时长、画幅和有声状态，并检查字幕与动作卡点。

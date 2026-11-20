@@ -81,6 +81,7 @@ npm run render -- --hybrid
 在 `*.scene.js` 中定义影片规格 `film`，并实现 `drawFrame(ctx, frame)`。预览和导出使用同一个绘制函数。人物走姿、转身画片、道具握点和口型时间由作者设计。内置导出为 VP8 视频，可带一条混合后的 Opus 音轨。
 
 - [Skill 入口](SKILL.md)
+- [十二秒赛车片的四个机位、动作设计与成片抽帧](references/action-sequence.md)
 - [制作与验收](references/production.md)
 - [人物动画](references/character-animation.md)
 - [对白与音轨](references/audio.md)
@@ -164,6 +165,7 @@ npm run render -- --hybrid
 Define the `film` configuration and `drawFrame(ctx, frame)` in a `*.scene.js` file. Preview and export use the same drawing function. Author the character poses, turn views, prop contact points, and mouth timing for each shot. The built-in exporter produces VP8 video with an optional mixed Opus audio track.
 
 - [Skill instructions](SKILL.md)
+- [Four shots from a twelve-second overtake, with a frame review tool (Chinese walkthrough)](references/action-sequence.md)
 - [Production and verification guide](references/production.md)
 - [Character animation guide](references/character-animation.md)
 - [Dialogue and audio guide](references/audio.md)
